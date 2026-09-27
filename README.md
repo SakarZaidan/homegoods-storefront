@@ -2,6 +2,16 @@
 
 A bilingual home goods storefront and staff studio for a **simulated Kuwait retailer**. Prices are in KWD; checkout records a simulated payment and never charges a card.
 
+## Screenshots
+
+| English storefront | Arabic storefront |
+| --- | --- |
+| <a href="docs/screenshots/en/home.png"><img src="docs/screenshots/en/home.png" alt="Dara English home page" width="420"></a> | <a href="docs/screenshots/ar/home.png"><img src="docs/screenshots/ar/home.png" alt="Dara Arabic home page" width="420"></a> |
+
+[Browse screenshots of every storefront and admin view, including mobile layouts](docs/screenshots/README.md).
+
+To recapture them from a running local stack, use `SEED_ADMIN_PASSWORD='your-local-password' node scripts/capture-screenshots.mjs`. This places two simulated orders.
+
 ## Local setup
 
 Requirements: Node 24, pnpm 9, PostgreSQL 16+ (or Docker).
