@@ -1,0 +1,59 @@
+name: Verify Dara
+on:
+  push:
+    branches: [main, 'feature/**']
+  pull_request:
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: dara
+          POSTGRES_USER: dara
+          POSTGRES_PASSWORD: dara
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U dara -d dara"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgres://dara:dara@localhost:5432/dara
+      WEB_ORIGIN: http://localhost:3000
+      NEXT_PUBLIC_API_URL: http://localhost:4000
+      TEST_API_URL: http://localhost:4000
+      TEST_WEB_URL: http://localhost:3000
+      SEED_ADMIN_PASSWORD: DaraCiAdminPassword2026
+      CI: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm db:migrate
+      - run: pnpm db:seed
+      - run: pnpm typecheck
+      - run: pnpm build
+      - name: Start API and web
+        run: |
+          node apps/api/dist/server.js > /tmp/dara-api.log 2>&1 &
+          pnpm --filter @dara/web start > /tmp/dara-web.log 2>&1 &
+          for i in $(seq 1 40); do curl -fsS http://localhost:4000/health >/dev/null && curl -fsS http://localhost:3000/en >/dev/null && exit 0; sleep 2; done
+          cat /tmp/dara-api.log /tmp/dara-web.log
+          exit 1
+      - run: pnpm test
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm test:e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-results
+          path: test-results

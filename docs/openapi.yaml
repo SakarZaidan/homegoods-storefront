@@ -1,0 +1,222 @@
+openapi: 3.1.0
+info:
+  title: Dara API
+  version: 1.0.0
+  description: Simulated home goods checkout for Kuwait. No card is charged.
+servers:
+  - url: http://localhost:4000/v1
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: dara_session
+    csrf:
+      type: apiKey
+      in: header
+      name: X-CSRF-Token
+  schemas:
+    CartItem:
+      type: object
+      required: [variantId, quantity]
+      properties:
+        variantId: { type: string, format: uuid }
+        quantity: { type: integer, minimum: 1, maximum: 50 }
+    QuoteRequest:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/CartItem' } }
+        promotionCode: { type: string }
+    CheckoutRequest:
+      allOf:
+        - $ref: '#/components/schemas/QuoteRequest'
+        - type: object
+          required: [email, name, phone, address, idempotencyKey]
+          properties:
+            email: { type: string, format: email }
+            name: { type: string }
+            phone: { type: string }
+            address: { type: string }
+            idempotencyKey: { type: string, format: uuid }
+    Product:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        slug: { type: string }
+        nameEn: { type: string }
+        nameAr: { type: string }
+        descriptionEn: { type: string }
+        descriptionAr: { type: string }
+        imageUrl: { type: string }
+        minPriceFils: { type: integer }
+        stock: { type: integer }
+    Order:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        orderNumber: { type: string }
+        status: { type: string, enum: [placed, packing, shipped, delivered, cancelled] }
+        totalFils: { type: integer }
+        stockRestored: { type: boolean }
+    Error:
+      type: object
+      properties:
+        error: { type: string }
+paths:
+  /auth/session:
+    get:
+      summary: Current account and CSRF token
+      responses:
+        '200': { description: Session state }
+  /auth/register:
+    post:
+      summary: Register a customer
+      security: [{ csrf: [] }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [email, name, password], properties: { email: { type: string, format: email }, name: { type: string }, password: { type: string, minLength: 12 } } } } } }
+      responses: { '200': { description: Created customer }, '409': { description: Email exists } }
+  /auth/login:
+    post:
+      summary: Log in
+      security: [{ csrf: [] }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [email, password], properties: { email: { type: string, format: email }, password: { type: string } } } } } }
+      responses: { '200': { description: Signed in }, '401': { description: Invalid credentials } }
+  /auth/logout:
+    post:
+      summary: End the session
+      security: [{ sessionCookie: [], csrf: [] }]
+      responses: { '200': { description: Signed out } }
+  /catalog/categories:
+    get:
+      summary: Browse categories
+      responses: { '200': { description: Bilingual categories } }
+  /catalog/collections:
+    get:
+      summary: Browse collections
+      responses: { '200': { description: Bilingual collections } }
+  /catalog/products:
+    get:
+      summary: Search and filter products
+      parameters:
+        - { name: q, in: query, schema: { type: string } }
+        - { name: category, in: query, schema: { type: string } }
+        - { name: collection, in: query, schema: { type: string } }
+        - { name: sort, in: query, schema: { type: string, enum: [price-asc, price-desc] } }
+        - { name: page, in: query, schema: { type: integer } }
+      responses:
+        '200': { description: Product page, content: { application/json: { schema: { type: object, properties: { items: { type: array, items: { $ref: '#/components/schemas/Product' } }, page: { type: integer }, hasMore: { type: boolean } } } } } }
+  /catalog/products/{slug}:
+    get:
+      summary: Product and variants
+      parameters: [{ name: slug, in: path, required: true, schema: { type: string } }]
+      responses: { '200': { description: Product detail }, '404': { description: Not found } }
+  /cart/quote:
+    post:
+      summary: Authoritative cart quote
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/QuoteRequest' } } } }
+      responses: { '200': { description: Current price and stock }, '409': { description: Item unavailable } }
+  /checkout:
+    post:
+      summary: Place idempotent simulated order
+      security: [{ csrf: [] }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/CheckoutRequest' } } } }
+      responses: { '201': { description: Created order and guest tracking token }, '200': { description: Existing order for repeated key }, '409': { description: Stock conflict } }
+  /orders:
+    get:
+      summary: Current account orders
+      security: [{ sessionCookie: [] }]
+      responses: { '200': { description: Order list } }
+  /orders/{id}:
+    get:
+      summary: Order details by owner or guest tracking token
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }, { name: token, in: query, schema: { type: string } }]
+      responses: { '200': { description: Order and items }, '403': { description: Access denied } }
+  /admin/overview:
+    get:
+      summary: Staff metrics
+      security: [{ sessionCookie: [] }]
+      responses: { '200': { description: Role-scoped metrics }, '403': { description: Forbidden } }
+  /admin/products:
+    get:
+      summary: Staff catalog list
+      security: [{ sessionCookie: [] }]
+      responses: { '200': { description: Products } }
+    post:
+      summary: Create product
+      security: [{ sessionCookie: [], csrf: [] }]
+      responses: { '200': { description: Product created } }
+  /admin/products/{id}:
+    patch:
+      summary: Edit product
+      security: [{ sessionCookie: [], csrf: [] }]
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses: { '200': { description: Product updated } }
+  /admin/products/{id}/images:
+    post:
+      summary: Add product image
+      security: [{ sessionCookie: [], csrf: [] }]
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses: { '200': { description: Image added } }
+  /admin/images/{id}:
+    delete:
+      summary: Remove product gallery image
+      security: [{ sessionCookie: [], csrf: [] }]
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses: { '200': { description: Image removed } }
+  /admin/products/{id}/variants:
+    post:
+      summary: Add variant
+      security: [{ sessionCookie: [], csrf: [] }]
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses: { '200': { description: Variant added } }
+  /admin/variants/{id}:
+    patch:
+      summary: Edit variant
+      security: [{ sessionCookie: [], csrf: [] }]
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses: { '200': { description: Variant updated } }
+  /admin/inventory/adjust:
+    post:
+      summary: Record stock adjustment and durable event
+      security: [{ sessionCookie: [], csrf: [] }]
+      responses: { '200': { description: Updated variant } }
+  /admin/orders:
+    get:
+      summary: Fulfillment orders
+      security: [{ sessionCookie: [] }]
+      responses: { '200': { description: Orders } }
+  /admin/orders/{id}:
+    patch:
+      summary: Fulfill or cancel; cancellation restores stock once
+      security: [{ sessionCookie: [], csrf: [] }]
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses: { '200': { description: Updated order } }
+  /admin/promotions:
+    get:
+      summary: Promotions
+      security: [{ sessionCookie: [] }]
+      responses: { '200': { description: Promotions } }
+    post:
+      summary: Create promotion
+      security: [{ sessionCookie: [], csrf: [] }]
+      responses: { '200': { description: Promotion created } }
+  /admin/audit:
+    get:
+      summary: Audit history
+      security: [{ sessionCookie: [] }]
+      responses: { '200': { description: Events } }
+  /admin/catalog.csv:
+    get:
+      summary: Export catalog CSV
+      security: [{ sessionCookie: [] }]
+      responses: { '200': { description: CSV export } }
+  /admin/catalog/import:
+    post:
+      summary: Import parsed CSV rows
+      security: [{ sessionCookie: [], csrf: [] }]
+      responses: { '200': { description: Import result } }
+  /events/inventory:
+    get:
+      summary: Durable server-sent inventory stream
+      parameters: [{ name: Last-Event-ID, in: header, schema: { type: string, format: uuid } }]
+      responses: { '200': { description: text/event-stream } }
