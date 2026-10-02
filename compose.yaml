@@ -1,0 +1,13 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: dara
+      POSTGRES_USER: dara
+      POSTGRES_PASSWORD: dara
+    ports:
+      - 5432:5432
+    volumes:
+      - dara-data:/var/lib/postgresql/data
+volumes:
+  dara-data:
